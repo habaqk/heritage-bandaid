@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Heritage Points · Kazimierz, Kraków</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --amber:     #c8973a;
+      --amber-dim: rgba(200, 151, 58, 0.15);
+      --bg:        #1a1917;
+      --card:      #232220;
+      --card-2:    #2c2a27;
+      --border:    #3a3830;
+      --text:      #f0ead6;
+      --muted:     #8a8070;
+      --std:       #5b8dd9;
+      --std-dim:   rgba(91, 141, 217, 0.15);
+      --header-h:  56px;
+      --r:         20px;
+      --ease:      0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg); color: var(--text);
+      height: 100dvh; overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    .header {
+      position: fixed; top: 0; left: 0; right: 0; height: var(--header-h);
+      background: rgba(26,25,23,0.94);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; z-index: 1000;
+    }
+    .logo { display: flex; align-items: center; gap: 9px; }
+    .logo-badge {
+      width: 32px; height: 32px; background: var(--amber); border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 13px; color: #1a1917; letter-spacing: -0.5px;
+    }
+    .logo-label { display: flex; flex-direction: column; line-height: 1.2; }
+    .logo-title { font-size: 13px; font-weight: 700; letter-spacing: -0.2px; }
+    .logo-sub   { font-size: 10px; color: var(--muted); }
+    .mode-toggle {
+      display: flex; background: var(--card-2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 3px; gap: 2px;
+    }
+    .toggle-btn {
+      border: none; background: transparent; color: var(--muted);
+      font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 7px;
+      cursor: pointer; transition: var(--ease); white-space: nowrap; font-family: inherit;
+    }
+    .toggle-btn.active { background: var(--amber); color: #1a1917; font-weight: 600; }
+
+    /* ── Map ─────────────────────────────────────────────────── */
+    #map { position: absolute; top: var(--header-h); left: 0; right: 0; bottom: 0; z-index: 1; }
+    .leaflet-top.leaflet-left { top: calc(var(--header-h) + 10px); }
+    .leaflet-control-zoom a {
+      background: var(--card) !important; border-color: var(--border) !important;
+      color: var(--text) !important;
+    }
+
+    /* ── Pin selected state ──────────────────────────────────── */
+    .leaflet-marker-icon svg {
+      transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), filter 0.22s ease;
+      transform-origin: 50% 100%;
+    }
+    .pin-selected svg {
+      transform: scale(1.5) translateY(-4px);
+      filter: brightness(1.7) drop-shadow(0 3px 10px rgba(200,151,58,0.55));
+    }
+
+    /* ── Crosshair ───────────────────────────────────────────── */
+    .ch-overlay {
+      position: fixed; inset: 0; z-index: 500; pointer-events: none;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center; padding-bottom: 80px;
+    }
+    .ch-overlay.active { display: flex; }
+    .ch { width: 44px; height: 44px; position: relative; }
+    .ch::before, .ch::after { content: ''; position: absolute; background: var(--amber); }
+    .ch::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+    .ch::after  { height: 2px; width: 100%; top: 50%;  transform: translateY(-50%); }
+    .ch-dot {
+      position: absolute; width: 8px; height: 8px; background: var(--amber);
+      border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--amber);
+    }
+    .ch-hint {
+      margin-top: 48px; background: rgba(26,25,23,0.92); border: 1px solid var(--border);
+      border-radius: 10px; padding: 8px 16px; font-size: 12px; color: var(--muted);
+    }
+
+    /* ── Placement controls ──────────────────────────────────── */
+    .place-ctrl {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+      display: none; gap: 10px; z-index: 600; pointer-events: all;
+    }
+    .place-ctrl.active { display: flex; }
+    .btn-confirm {
+      background: var(--amber); color: #1a1917; border: none; border-radius: 12px;
+      padding: 13px 28px; font-size: 14px; font-weight: 700;
+      cursor: pointer; font-family: inherit; box-shadow: 0 4px 20px rgba(200,151,58,0.4);
+    }
+    .btn-cancel {
+      background: var(--card-2); color: var(--muted); border: 1px solid var(--border);
+      border-radius: 12px; padding: 13px 20px; font-size: 14px;
+      font-weight: 500; cursor: pointer; font-family: inherit;
+    }
+
+    /* ── FAB ─────────────────────────────────────────────────── */
+    .fab {
+      position: fixed; bottom: 32px; right: 20px;
+      width: 52px; height: 52px; background: var(--amber); color: #1a1917;
+      border: none; border-radius: 16px; cursor: pointer; z-index: 400;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 20px rgba(200,151,58,0.4); transition: var(--ease);
+    }
+    .fab:active { transform: scale(0.91); }
+
+    /* ── Bottom sheet ────────────────────────────────────────── */
+    .sheet {
+      position: fixed; bottom: 0; left: 0; right: 0; background: var(--card);
+      border-radius: var(--r) var(--r) 0 0; border-top: 1px solid var(--border);
+      z-index: 800; transform: translateY(100%); transition: transform var(--ease);
+      max-height: 85vh; display: flex; flex-direction: column;
+    }
+    .sheet.open { transform: translateY(0); }
+    .sheet-handle {
+      width: 36px; height: 4px; background: var(--border);
+      border-radius: 2px; margin: 12px auto 0; flex-shrink: 0;
+    }
+    .sheet-scroll { overflow-y: auto; flex: 1; padding: 16px 20px 40px; }
+
+    /* ── HP card content ─────────────────────────────────────── */
+    .sheet-name {
+      font-size: 22px; font-weight: 700;
+      font-family: Georgia, 'Times New Roman', serif;
+      line-height: 1.2; margin-bottom: 14px;
+    }
+
+    /* Photo strip */
+    .photo-strip {
+      display: flex; gap: 4px; overflow-x: auto;
+      margin: 0 -20px 18px; padding: 0 20px;
+      height: 180px; flex-shrink: 0;
+      -webkit-overflow-scrolling: touch; scroll-snap-type: x mandatory;
+    }
+    .photo-strip::-webkit-scrollbar { display: none; }
+    .photo-main {
+      height: 180px; width: 240px; object-fit: cover; border-radius: 8px;
+      flex-shrink: 0; background: var(--card-2); scroll-snap-align: start;
+    }
+    .photo-pair { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+    .photo-pair img {
+      height: 88px; width: 145px; object-fit: cover; border-radius: 8px;
+      background: var(--card-2);
+    }
+    .photo-drive-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-bottom: 16px; font-size: 12px; color: var(--muted);
+      text-decoration: none; border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 12px; width: fit-content;
+    }
+    .photo-drive-link:hover { border-color: var(--amber); color: var(--amber); }
+
+    /* Hook line */
+    .hook-line {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-style: italic; font-weight: 700; font-size: 17px;
+      color: var(--amber); line-height: 1.3; margin-bottom: 10px;
+    }
+
+    /* Category pill */
+    .pill {
+      display: inline-flex; align-items: center; border-radius: 6px;
+      padding: 3px 10px; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;
+    }
+    .pill.hp  { background: var(--amber-dim); color: var(--amber); }
+    .pill.std { background: var(--std-dim);   color: var(--std);   }
+
+    /* Two-part description */
+    .short-text {
+      font-size: 15px; line-height: 1.68; color: #c4baa8; margin-bottom: 8px;
+    }
+    .full-text {
+      font-size: 15px; line-height: 1.68; color: #c4baa8;
+      margin-bottom: 8px; display: none;
+    }
+    .full-text.visible { display: block; }
+
+    .read-more-btn {
+      background: none; border: none; color: var(--amber);
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      font-family: inherit; padding: 0; margin-bottom: 24px; display: block;
+    }
+
+    /* Comments */
+    .comments-section { border-top: 1px solid var(--border); padding-top: 20px; }
+    .comments-head {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.8px;
+      display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+    }
+    .comments-head::before, .comments-head::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+    .comment-item { margin-bottom: 14px; }
+    .comment-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+    .comment-user { font-size: 12px; font-weight: 600; color: var(--text); }
+    .comment-time { font-size: 11px; color: var(--muted); }
+    .comment-text { font-size: 14px; line-height: 1.55; color: #c4baa8; }
+    .no-comments  { font-size: 13px; color: var(--muted); font-style: italic; margin-bottom: 16px; }
+    .comment-input-area {
+      display: flex; gap: 8px; margin-top: 16px;
+      border-top: 1px solid var(--border); padding-top: 16px;
+    }
+    .comment-input {
+      flex: 1; background: var(--card-2); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-size: 14px;
+      padding: 10px 12px; outline: none; font-family: inherit;
+      resize: none; min-height: 40px; max-height: 100px;
+      transition: border-color 0.2s; line-height: 1.4;
+    }
+    .comment-input:focus { border-color: var(--amber); }
+    .comment-post {
+      background: var(--amber); color: #1a1917; border: none;
+      border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 700;
+      cursor: pointer; font-family: inherit; flex-shrink: 0;
+      align-self: flex-end; height: 40px;
+    }
+
+    /* Standard POI card */
+    .sheet-title {
+      font-size: 22px; font-weight: 700; font-family: Georgia, serif;
+      margin-bottom: 11px; line-height: 1.25;
+    }
+    .sheet-rating { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .sheet-stars  { color: #f5c518; font-size: 14px; }
+    .sheet-rev    { font-size: 13px; color: var(--muted); }
+    .std-note {
+      background: var(--std-dim); border: 1px solid rgba(91,141,217,0.18);
+      border-radius: 10px; padding: 12px 14px;
+      font-size: 13px; color: #8aaad9; line-height: 1.5; font-style: italic;
+    }
+
+    /* ── Modal ───────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(8,8,8,0.72); z-index: 900;
+      display: flex; align-items: flex-end;
+      opacity: 0; pointer-events: none; transition: opacity var(--ease);
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--card); border-radius: var(--r) var(--r) 0 0;
+      border-top: 1px solid var(--border); width: 100%; max-height: 88vh;
+      overflow-y: auto; padding: 20px 20px 44px;
+      transform: translateY(24px); transition: transform var(--ease);
+    }
+    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px;
+    }
+    .modal-head h2 { font-size: 20px; font-weight: 700; font-family: Georgia, serif; }
+    .btn-x {
+      width: 32px; height: 32px; background: var(--card-2);
+      border: 1px solid var(--border); color: var(--muted); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 14px; font-family: inherit;
+    }
+    .fg { margin-bottom: 18px; }
+    .fg label {
+      display: block; font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;
+    }
+    .fg input, .fg textarea, .fg select {
+      width: 100%; background: var(--card-2); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-size: 15px; padding: 12px 14px;
+      outline: none; font-family: inherit; transition: border-color 0.2s;
+      -webkit-appearance: none; appearance: none;
+    }
+    .fg input:focus, .fg textarea:focus, .fg select:focus { border-color: var(--amber); }
+    .fg textarea { resize: vertical; min-height: 80px; line-height: 1.55; }
+    .fg-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+    .form-hint { font-size: 12px; color: var(--muted); margin-bottom: 20px; line-height: 1.4; }
+    .btn-submit {
+      width: 100%; background: var(--amber); color: #1a1917; border: none;
+      border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 700;
+      cursor: pointer; font-family: inherit;
+    }
+
+    /* ── Legend ──────────────────────────────────────────────── */
+    .legend {
+      position: fixed; bottom: 32px; left: 16px;
+      background: rgba(26,25,23,0.88); backdrop-filter: blur(8px);
+      border: 1px solid var(--border); border-radius: 10px; padding: 10px 13px; z-index: 400;
+    }
+    .leg-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; color: var(--muted); margin-bottom: 5px;
+    }
+    .leg-row:last-child { margin-bottom: 0; }
+    .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .leg-dot.hp  { background: var(--amber); }
+    .leg-dot.std { background: var(--std); }
+
+    /* ── Toast ───────────────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 96px; left: 50%;
+      transform: translateX(-50%) translateY(16px);
+      background: var(--card-2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 10px; padding: 9px 16px;
+      font-size: 13px; z-index: 1100;
+      opacity: 0; transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none; white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <div class="logo-badge">HP</div>
+    <div class="logo-label">
+      <span class="logo-title">Heritage Points</span>
+      <span class="logo-sub">Kazimierz, Kraków</span>
+    </div>
+  </div>
+  <div class="mode-toggle">
+    <button class="toggle-btn active" id="btn-hp"  onclick="setMode('hp')">Community</button>
+    <button class="toggle-btn"        id="btn-std" onclick="setMode('standard')">Standard</button>
+  </div>
+</header>
+
+<div id="map"></div>
+
+<div class="ch-overlay" id="ch-overlay">
+  <div class="ch"><div class="ch-dot"></div></div>
+  <div class="ch-hint">Drag map to choose location</div>
+</div>
+
+<div class="place-ctrl" id="place-ctrl">
+  <button class="btn-cancel"  onclick="cancelPin()">Cancel</button>
+  <button class="btn-confirm" onclick="confirmPin()">Confirm location</button>
+</div>
+
+<button class="fab" id="fab" onclick="startPin()" title="Add a place">
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+  </svg>
+</button>
+
+<div class="legend">
+  <div class="leg-row" id="leg-hp"><div class="leg-dot hp"></div><span>Community place</span></div>
+  <div class="leg-row" id="leg-std" style="display:none"><div class="leg-dot std"></div><span>Standard POI</span></div>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-scroll" id="sheet-body"></div>
+</div>
+
+<div class="modal-overlay" id="modal-overlay" onclick="handleOverlay(event)">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Mark this place</h2>
+      <button class="btn-x" onclick="closeModal()">✕</button>
+    </div>
+    <form id="add-form" onsubmit="submitPin(event)">
+      <div class="fg">
+        <label>Place name</label>
+        <input type="text" id="f-name" placeholder="What do locals call it?" required autocomplete="off">
+      </div>
+      <div class="fg">
+        <label>Hook line</label>
+        <input type="text" id="f-hook" placeholder='A short bold phrase — e.g. "The square apps can\'t explain."' required autocomplete="off">
+      </div>
+      <div class="fg">
+        <label>Short description</label>
+        <textarea id="f-short" placeholder="One or two sentences — always visible." required></textarea>
+        <div class="fg-hint">Always shown. Keep it to 1–2 sentences.</div>
+      </div>
+      <div class="fg">
+        <label>Full description <span style="font-weight:400;text-transform:none">(Read more)</span></label>
+        <textarea id="f-full" placeholder="The rest of the story — revealed when the reader taps 'Read more'."></textarea>
+        <div class="fg-hint">Optional. Revealed behind the Read more button.</div>
+      </div>
+      <div class="fg">
+        <label>Category</label>
+        <select id="f-cat">
+          <option value="event space">Event space</option>
+          <option value="bar & culture">Bar & culture</option>
+          <option value="gallery & arts">Gallery & arts</option>
+          <option value="shop">Shop</option>
+          <option value="informal space">Informal space</option>
+          <option value="museum">Museum</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <p class="form-hint">Your pin will be placed at the map centre you confirmed.</p>
+      <button type="submit" class="btn-submit">Add to the map</button>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+
+// ── Google Sheets config ──────────────────────────────────────────────────────
+// Sheet must be "Anyone with the link can view".
+// Layout: row 1 = field names in col A + place IDs in cols B→
+//         rows 2+ = one field per row, values per place in each column.
+
+const SHEET_ID = '16xwBD4yg7EM7GmXUzrYjBgPAu68SCbF7x6YoeIEZCgE';
+
+const STD_POIS = [
+  { id:'t1', name:'Fabryka Schindlera',  lat:50.0459, lng:19.9492, type:'Museum',             rating:4.8, reviews:24130 },
+  { id:'t2', name:'Wawel Royal Castle',  lat:50.0543, lng:19.9348, type:'Tourist attraction', rating:4.7, reviews:48920 },
+  { id:'t3', name:'Starbucks',           lat:50.0622, lng:19.9381, type:'Coffee chain',        rating:4.1, reviews:1243  },
+  { id:'t4', name:"McDonald's",          lat:50.0613, lng:19.9390, type:'Fast food',           rating:3.9, reviews:3872  },
+  { id:'t5', name:'Galeria Kazimierz',   lat:50.0527, lng:19.9612, type:'Shopping mall',       rating:4.3, reviews:7234  },
+  { id:'t6', name:'Hard Rock Cafe',      lat:50.0617, lng:19.9372, type:'Restaurant chain',    rating:4.4, reviews:5621  },
+  { id:'t7', name:'Hotel Kazimierz',     lat:50.0527, lng:19.9445, type:'Hotel',               rating:4.2, reviews:2891  },
+];
+
+const SEED_COMMENTS = {
+  's3':  [{ user:'Marta W.',        time:'2d', text:'The jazz nights here are something else. Been coming for eight years.' },
+          { user:'Jan K.',          time:'1w', text:'Always full but never feels too crowded. That\'s rare.' }],
+  's14': [{ user:'Erasmus student', time:'3d', text:'This place helped me understand Kraków more than any guidebook.' }],
+  's18': [{ user:'Tomasz R.',       time:'5d', text:'Saturday morning at Plac Nowy is non-negotiable.' },
+          { user:'Anna B.',         time:'2w', text:'The zapiekanka stand in the middle is a Kraków institution.' }],
+  's2':  [{ user:'Local resident',  time:'1w', text:'I love that the space respects the building\'s history while creating something new.' }],
+  's22': [{ user:'Maria L.',        time:'4d', text:'One of the most thoughtfully curated museums I\'ve been to. Understated in the best way.' }],
+  's13': [{ user:'Ewa P.',          time:'6d', text:'Hard to describe the feeling of browsing Hebrew books inside a 16th-century synagogue.' }],
+};
+
+// ── Google Sheets live fetch ──────────────────────────────────────────────────
+// Sheet must be "Anyone with the link can view".
+// Transposed layout: col A = field name labels, cols B→X = one place each.
+// gviz returns CORS-friendly JSON; we strip the JS wrapper before parsing.
+
+async function loadFromSheet() {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=0&headers=1`;
+    const res  = await fetch(url);
+    if (!res.ok) { console.warn('HP: gviz request failed', res.status); return []; }
+    const text = await res.text();
+    // Strip  /*O_o*/\ngoogle.visualization.Query.setResponse(…);
+    const json = text.replace(/^[^(]+\(/, '').replace(/\);\s*$/, '');
+    const data = JSON.parse(json);
+    return parseGvizData(data);
+  } catch (e) {
+    console.warn('HP: sheet fetch error', e);
+    return [];
+  }
+}
+
+// Parses gviz response for transposed sheet:
+//   cols[i].label = row 1 values  (col A = "id", cols B+ = "s1","s2"…)
+//   rows[i].c[0].v = field name   (col A of row i+1)
+//   rows[i].c[j].v = place value  (col j of row i+1)
+function parseGvizData(data) {
+  const cols = data?.table?.cols || [];
+  const rows = data?.table?.rows || [];
+
+  // Build a map: field name → row index
+  const fieldRow = {};
+  rows.forEach((row, i) => {
+    const f = row.c?.[0]?.v;
+    if (f) fieldRow[String(f).trim()] = i;
+  });
+
+  const get = (field, col) => {
+    const ri = fieldRow[field];
+    if (ri === undefined) return '';
+    const cell = rows[ri]?.c?.[col];
+    const v = cell?.v;
+    return (v !== null && v !== undefined) ? String(v).trim() : '';
+  };
+
+  const pins = [];
+  // cols[0].label = "id" (header of col A); cols[1+].label = place IDs (s1, s2…)
+  for (let col = 1; col < cols.length; col++) {
+    const name = get('name', col);
+    if (!name) continue;
+    pins.push({
+      id:          (cols[col].label || `s${col}`).trim(),  // id is the column header
+      name,
+      hookLine:    get('hookLine', col),
+      shortText:   get('shortText', col),
+      fullText:    get('fullText', col),
+      category:    get('category', col) || 'other',
+      lat:         parseFloat(get('lat', col)) || 50.0510,
+      lng:         parseFloat(get('lng', col)) || 19.9460,
+      contributor: get('contributor', col) || 'local',
+      photoFolder: get('photoFolder', col) || '',
+    });
+  }
+  console.info(`HP: parsed ${pins.length} places from sheet.`);
+  return pins;
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let map, hpLayer, stdLayer;
+let mode = 'hp';
+let pendingCoords = null;
+let selectedMarker = null;
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', async () => {
+  map = L.map('map', { center: [50.0510, 19.9460], zoom: 16 });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd', maxZoom: 20,
+  }).addTo(map);
+
+  hpLayer  = L.layerGroup().addTo(map);
+  stdLayer = L.layerGroup();
+
+  showToast('Loading places…');
+  const pins = await loadFromSheet();
+  if (!pins.length) {
+    showToast('Could not load places — check sheet permissions.');
+    console.warn('HP: sheet returned 0 pins. Is the sheet public?');
+  } else {
+    showToast(`${pins.length} places loaded`);
+  }
+
+  pins.forEach(p => addHpMarker(p));
+  JSON.parse(localStorage.getItem('hp_user') || '[]').forEach(p => addHpMarker(p));
+  STD_POIS.forEach(p => addStdMarker(p));
+
+  map.on('click', () => closeSheet());
+});
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+const HP_ICON = L.divIcon({
+  className: 'hp-pin',
+  html: `<svg pointer-events="none" width="30" height="36" viewBox="0 0 30 36" xmlns="http://www.w3.org/2000/svg">
+    <path d="M15 2C7.82 2 2 7.82 2 15c0 9.8 13 21 13 21s13-11.2 13-21C28 7.82 22.18 2 15 2z"
+          fill="#c8973a" stroke="#1a1917" stroke-width="1.5"/>
+    <circle cx="15" cy="15" r="5"   fill="#1a1917"/>
+    <circle cx="15" cy="15" r="2.8" fill="#c8973a"/>
+  </svg>`,
+  iconSize: [30, 36], iconAnchor: [15, 36],
+});
+
+const STD_ICON = L.divIcon({
+  className: 'std-pin',
+  html: `<svg pointer-events="none" width="26" height="26" viewBox="0 0 26 26" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="13" cy="13" r="11" fill="#5b8dd9" stroke="#1a1917" stroke-width="1.5"/>
+    <text x="13" y="17" text-anchor="middle" fill="white" font-size="11" font-family="sans-serif">★</text>
+  </svg>`,
+  iconSize: [26, 26], iconAnchor: [13, 13],
+});
+
+// ── Selected-pin state ────────────────────────────────────────────────────────
+
+function selectMarker(m) {
+  if (selectedMarker?._icon) selectedMarker._icon.classList.remove('pin-selected');
+  selectedMarker = m || null;
+  if (selectedMarker?._icon) selectedMarker._icon.classList.add('pin-selected');
+}
+
+// ── Markers ───────────────────────────────────────────────────────────────────
+
+function addHpMarker(pin) {
+  const m = L.marker([pin.lat, pin.lng], { icon: HP_ICON });
+  m.on('click', (e) => { L.DomEvent.stopPropagation(e); selectMarker(m); openSheet(pin, 'hp'); });
+  m.addTo(hpLayer);
+}
+
+function addStdMarker(poi) {
+  const m = L.marker([poi.lat, poi.lng], { icon: STD_ICON });
+  m.on('click', (e) => { L.DomEvent.stopPropagation(e); selectMarker(null); openSheet(poi, 'std'); });
+  m.addTo(stdLayer);
+}
+
+// ── Mode ──────────────────────────────────────────────────────────────────────
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('btn-hp').classList.toggle('active', m === 'hp');
+  document.getElementById('btn-std').classList.toggle('active', m === 'standard');
+  document.getElementById('leg-hp').style.display  = m === 'hp'       ? 'flex' : 'none';
+  document.getElementById('leg-std').style.display = m === 'standard' ? 'flex' : 'none';
+  if (m === 'hp') {
+    if (!map.hasLayer(hpLayer))  map.addLayer(hpLayer);
+    map.removeLayer(stdLayer);
+  } else {
+    map.removeLayer(hpLayer);
+    if (!map.hasLayer(stdLayer)) map.addLayer(stdLayer);
+  }
+  closeSheet();
+}
+
+// ── Photo helpers ─────────────────────────────────────────────────────────────
+
+function photoStripHTML(pin) {
+  const s = (pin.id || '').replace(/[^a-z0-9]/gi, '').slice(-5) || 'kaz';
+  const driveLink = pin.photoFolder
+    ? `<a class="photo-drive-link" href="${pin.photoFolder}" target="_blank" rel="noopener">
+         📁 View photos in Drive
+       </a>`
+    : '';
+  return `
+    <div class="photo-strip">
+      <img class="photo-main" src="https://picsum.photos/seed/${s}1/320/200" alt="" loading="lazy" onerror="this.style.background='#2c2a27'">
+      <div class="photo-pair">
+        <img src="https://picsum.photos/seed/${s}2/160/96" alt="" loading="lazy" onerror="this.style.background='#2c2a27'">
+        <img src="https://picsum.photos/seed/${s}3/160/96" alt="" loading="lazy" onerror="this.style.background='#2c2a27'">
+      </div>
+      <div class="photo-pair">
+        <img src="https://picsum.photos/seed/${s}4/160/96" alt="" loading="lazy" onerror="this.style.background='#2c2a27'">
+        <img src="https://picsum.photos/seed/${s}5/160/96" alt="" loading="lazy" onerror="this.style.background='#2c2a27'">
+      </div>
+    </div>
+    ${driveLink}`;
+}
+
+// ── Comments ──────────────────────────────────────────────────────────────────
+
+function getComments(pinId) {
+  return [
+    ...(SEED_COMMENTS[pinId] || []),
+    ...JSON.parse(localStorage.getItem('hp_cmts_' + pinId) || '[]'),
+  ];
+}
+
+function renderComments(comments) {
+  if (!comments.length)
+    return '<div class="no-comments">Be the first to share something about this place.</div>';
+  return comments.map(c => `
+    <div class="comment-item">
+      <div class="comment-meta">
+        <span class="comment-user">${c.user}</span>
+        <span class="comment-time">${c.time}</span>
+      </div>
+      <div class="comment-text">${c.text}</div>
+    </div>`).join('');
+}
+
+function submitComment(pinId) {
+  const input = document.getElementById('ci-' + pinId);
+  const text  = input.value.trim();
+  if (!text) return;
+  const stored = JSON.parse(localStorage.getItem('hp_cmts_' + pinId) || '[]');
+  stored.push({ user:'You', time:'just now', text });
+  localStorage.setItem('hp_cmts_' + pinId, JSON.stringify(stored));
+  input.value = '';
+  document.getElementById('cl-' + pinId).innerHTML = renderComments(getComments(pinId));
+}
+
+// ── Sheet ─────────────────────────────────────────────────────────────────────
+
+function openSheet(data, type) {
+  const body = document.getElementById('sheet-body');
+
+  if (type === 'hp') {
+    const hasMore  = data.fullText && data.fullText.trim();
+    const comments = getComments(data.id);
+    body.innerHTML = `
+      <div class="sheet-name">${data.name}</div>
+      ${photoStripHTML(data)}
+      <div class="hook-line">${data.hookLine || ''}</div>
+      <div class="pill hp">${data.category}</div>
+
+      <div class="short-text">${data.shortText || ''}</div>
+      ${hasMore ? `
+        <div class="full-text" id="ft-${data.id}">${data.fullText}</div>
+        <button class="read-more-btn" id="rmb-${data.id}" onclick="toggleReadMore('${data.id}')">Read more</button>
+      ` : ''}
+
+      <div class="comments-section">
+        <div class="comments-head">Comments</div>
+        <div id="cl-${data.id}">${renderComments(comments)}</div>
+        <div class="comment-input-area">
+          <textarea class="comment-input" id="ci-${data.id}"
+            placeholder="Share what this place means to you…" rows="1"
+            oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+          <button class="comment-post" onclick="submitComment('${data.id}')">Post</button>
+        </div>
+      </div>`;
+  } else {
+    const n = Math.round(data.rating);
+    body.innerHTML = `
+      <div class="pill std">${data.type}</div>
+      <div class="sheet-title">${data.name}</div>
+      <div class="sheet-rating">
+        <span class="sheet-stars">${'★'.repeat(n) + '☆'.repeat(5-n)}</span>
+        <span class="sheet-rev">${data.rating} · ${data.reviews.toLocaleString()} reviews</span>
+      </div>
+      <div class="std-note">
+        This place surfaces here because it generates high engagement data — not because the local community considers it significant.
+      </div>`;
+  }
+
+  document.getElementById('sheet').classList.add('open');
+  document.getElementById('sheet-body').scrollTop = 0;
+}
+
+function closeSheet() {
+  document.getElementById('sheet').classList.remove('open');
+  selectMarker(null);
+}
+
+function toggleReadMore(pinId) {
+  const ft  = document.getElementById('ft-'  + pinId);
+  const btn = document.getElementById('rmb-' + pinId);
+  const opening = !ft.classList.contains('visible');
+  ft.classList.toggle('visible', opening);
+  btn.textContent = opening ? 'Show less' : 'Read more';
+}
+
+// ── Add pin flow ──────────────────────────────────────────────────────────────
+
+function startPin() {
+  closeSheet();
+  document.getElementById('ch-overlay').classList.add('active');
+  document.getElementById('place-ctrl').classList.add('active');
+  document.getElementById('fab').style.display = 'none';
+}
+
+function cancelPin() {
+  document.getElementById('ch-overlay').classList.remove('active');
+  document.getElementById('place-ctrl').classList.remove('active');
+  document.getElementById('fab').style.display = 'flex';
+  pendingCoords = null;
+}
+
+function confirmPin() {
+  const c = map.getCenter();
+  pendingCoords = { lat: c.lat, lng: c.lng };
+  cancelPin();
+  openModal();
+}
+
+function openModal() {
+  document.getElementById('add-form').reset();
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  document.getElementById('fab').style.display = 'flex';
+  pendingCoords = null;
+}
+
+function handleOverlay(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+}
+
+function submitPin(e) {
+  e.preventDefault();
+  if (!pendingCoords) return;
+  const pin = {
+    id:          'u-' + Date.now(),
+    name:        document.getElementById('f-name').value.trim(),
+    hookLine:    document.getElementById('f-hook').value.trim(),
+    shortText:   document.getElementById('f-short').value.trim(),
+    fullText:    document.getElementById('f-full').value.trim(),
+    category:    document.getElementById('f-cat').value,
+    lat:         pendingCoords.lat,
+    lng:         pendingCoords.lng,
+    contributor: 'you',
+    photoFolder: '',
+  };
+  const stored = JSON.parse(localStorage.getItem('hp_user') || '[]');
+  stored.push(pin);
+  localStorage.setItem('hp_user', JSON.stringify(stored));
+  addHpMarker(pin);
+  if (mode !== 'hp') setMode('hp');
+  map.flyTo([pin.lat, pin.lng], 17, { duration: 1.2 });
+  closeModal();
+  showToast('Place added to the map');
+  setTimeout(() => openSheet(pin, 'hp'), 1500);
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+</script>
+</body>
+</html>
