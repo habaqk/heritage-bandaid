@@ -11,6 +11,10 @@
     :root {
       --amber:     #c8973a;
       --amber-dim: rgba(200, 151, 58, 0.15);
+      --teal:      #6bbf9e;
+      --teal-dim:  rgba(107, 191, 158, 0.15);
+      --terra:     #e87c50;
+      --terra-dim: rgba(232, 124, 80, 0.15);
       --bg:        #1a1917;
       --card:      #232220;
       --card-2:    #2c2a27;
@@ -298,19 +302,33 @@
       cursor: pointer; font-family: inherit;
     }
 
-    /* ── Legend ──────────────────────────────────────────────── */
-    .legend {
+    /* ── Optic selector ──────────────────────────────────────── */
+    .optic-bar {
+      position: fixed; bottom: 32px; left: 16px;
+      display: flex; flex-direction: column; gap: 5px; z-index: 400;
+    }
+    .optic-pill {
+      display: flex; align-items: center; gap: 7px;
+      background: rgba(26,25,23,0.88); backdrop-filter: blur(8px);
+      border: 1px solid var(--border); border-radius: 20px;
+      padding: 6px 12px; font-size: 11px; color: var(--muted);
+      cursor: pointer; font-family: inherit;
+      transition: border-color 0.2s, color 0.2s; white-space: nowrap;
+    }
+    .optic-pill.active { color: var(--text); }
+    .optic-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Standard mode legend (replaces optic bar) */
+    .std-legend {
       position: fixed; bottom: 32px; left: 16px;
       background: rgba(26,25,23,0.88); backdrop-filter: blur(8px);
-      border: 1px solid var(--border); border-radius: 10px; padding: 10px 13px; z-index: 400;
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 8px 13px; z-index: 400; display: none;
+      align-items: center; gap: 7px;
+      font-size: 11px; color: var(--muted);
     }
-    .leg-row {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 11px; color: var(--muted); margin-bottom: 5px;
-    }
-    .leg-row:last-child { margin-bottom: 0; }
-    .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .leg-dot.hp  { background: var(--amber); }
+    .std-legend.visible { display: flex; }
+    .leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
     .leg-dot.std { background: var(--std); }
 
     /* ── Toast ───────────────────────────────────────────────── */
@@ -360,9 +378,19 @@
   </svg>
 </button>
 
-<div class="legend">
-  <div class="leg-row" id="leg-hp"><div class="leg-dot hp"></div><span>Community place</span></div>
-  <div class="leg-row" id="leg-std" style="display:none"><div class="leg-dot std"></div><span>Standard POI</span></div>
+<div class="optic-bar" id="optic-bar">
+  <button class="optic-pill active" data-optic="all"         onclick="setOptic('all')">
+    <span class="optic-dot" style="background:var(--amber)"></span>All places
+  </button>
+  <button class="optic-pill"        data-optic="lifeCulture" onclick="setOptic('lifeCulture')">
+    <span class="optic-dot" style="background:var(--teal)"></span>Life &amp; Culture
+  </button>
+  <button class="optic-pill"        data-optic="goingOut"    onclick="setOptic('goingOut')">
+    <span class="optic-dot" style="background:var(--terra)"></span>Going Out
+  </button>
+</div>
+<div class="std-legend" id="std-legend">
+  <span class="leg-dot std"></span><span>Standard POI</span>
 </div>
 
 <div class="sheet" id="sheet">
@@ -434,6 +462,32 @@ const STD_POIS = [
   { id:'t6', name:'Hard Rock Cafe',      lat:50.0617, lng:19.9372, type:'Restaurant chain',    rating:4.4, reviews:5621  },
   { id:'t7', name:'Hotel Kazimierz',     lat:50.0527, lng:19.9445, type:'Hotel',               rating:4.2, reviews:2891  },
 ];
+
+// ── Optics ────────────────────────────────────────────────────────────────────
+// Each optic is a community-authored lens over the same underlying place data.
+// categories: null means "show all"; otherwise only matching categories are
+// rendered at full brightness — the rest recede (grey, low opacity).
+
+const OPTICS = {
+  all: {
+    label:      'All places',
+    categories: null,
+    color:      '#c8973a',
+    colorDim:   'rgba(200,151,58,0.15)',
+  },
+  lifeCulture: {
+    label:      'Life & Culture',
+    categories: ['event space', 'informal space', 'gallery & arts', 'museum'],
+    color:      '#6bbf9e',
+    colorDim:   'rgba(107,191,158,0.15)',
+  },
+  goingOut: {
+    label:      'Going Out',
+    categories: ['bar & culture', 'shop'],
+    color:      '#e87c50',
+    colorDim:   'rgba(232,124,80,0.15)',
+  },
+};
 
 const SEED_COMMENTS = {
   's3':  [{ user:'Marta W.',        time:'2d', text:'The jazz nights here are something else. Been coming for eight years.' },
@@ -516,6 +570,7 @@ function parseGvizData(data) {
 
 let map, hpLayer, stdLayer;
 let mode = 'hp';
+let activeOptic = 'all';
 let pendingCoords = null;
 let selectedMarker = null;
 
@@ -582,8 +637,11 @@ function selectMarker(m) {
 
 function addHpMarker(pin) {
   const m = L.marker([pin.lat, pin.lng], { icon: HP_ICON });
+  m._pin = pin;  // stored for optic filtering
   m.on('click', (e) => { L.DomEvent.stopPropagation(e); selectMarker(m); openSheet(pin, 'hp'); });
   m.addTo(hpLayer);
+  // apply current optic colour immediately so late-added pins (localStorage) stay consistent
+  _applyOpticToMarker(m);
 }
 
 function addStdMarker(poi) {
@@ -592,14 +650,54 @@ function addStdMarker(poi) {
   m.addTo(stdLayer);
 }
 
+// ── Optics ────────────────────────────────────────────────────────────────────
+
+// Returns the optic definition that owns a given category (falls back to 'all').
+function opticForCategory(category) {
+  for (const [, optic] of Object.entries(OPTICS)) {
+    if (optic.categories?.includes(category)) return optic;
+  }
+  return OPTICS.all;
+}
+
+// Apply the active optic colour to a single marker. Called on add and on optic change.
+function _applyOpticToMarker(m) {
+  if (!m._pin || !m._icon) return;
+  const optic = OPTICS[activeOptic];
+  const matches = !optic.categories || optic.categories.includes(m._pin.category);
+  const color   = matches ? opticForCategory(m._pin.category).color : '#555555';
+  const svg = m._icon.querySelector('svg');
+  if (svg) {
+    svg.querySelector('path')?.setAttribute('fill', matches ? opticForCategory(m._pin.category).color : '#555555');
+    svg.querySelectorAll('circle')[1]?.setAttribute('fill', color);
+  }
+  m._icon.style.opacity = matches ? '1' : '0.2';
+}
+
+function setOptic(key) {
+  activeOptic = key;
+  const optic = OPTICS[key];
+
+  // Restyle all HP markers
+  hpLayer.eachLayer(m => _applyOpticToMarker(m));
+
+  // Update pill UI — highlight active pill with its optic colour
+  document.querySelectorAll('.optic-pill').forEach(pill => {
+    const isActive = pill.dataset.optic === key;
+    pill.classList.toggle('active', isActive);
+    pill.style.borderColor = isActive ? optic.color : '';
+    pill.style.color       = isActive ? optic.color : '';
+  });
+}
+
 // ── Mode ──────────────────────────────────────────────────────────────────────
 
 function setMode(m) {
   mode = m;
   document.getElementById('btn-hp').classList.toggle('active', m === 'hp');
   document.getElementById('btn-std').classList.toggle('active', m === 'standard');
-  document.getElementById('leg-hp').style.display  = m === 'hp'       ? 'flex' : 'none';
-  document.getElementById('leg-std').style.display = m === 'standard' ? 'flex' : 'none';
+  document.getElementById('optic-bar').style.display  = m === 'hp'       ? '' : 'none';
+  document.getElementById('std-legend').classList.toggle('visible', m === 'standard');
   if (m === 'hp') {
     if (!map.hasLayer(hpLayer))  map.addLayer(hpLayer);
     map.removeLayer(stdLayer);
@@ -679,7 +777,7 @@ function openSheet(data, type) {
       <div class="sheet-name">${data.name}</div>
       ${photoStripHTML(data)}
       <div class="hook-line">${data.hookLine || ''}</div>
-      <div class="pill hp">${data.category}</div>
+      ${(function(){ const o = opticForCategory(data.category); return `<div class="pill" style="background:${o.colorDim};color:${o.color}">${data.category}</div>`; })()}
 
       <div class="short-text">${data.shortText || ''}</div>
       ${hasMore ? `

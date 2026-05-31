@@ -1,3 +1,8 @@
+---
+parent: "[[Heritage_Points]]"
+format: Prototype Brief
+generated: 2026-05-26
+---
 # CLAUDE.md — Heritage Points Prototype
 
 This file is auto-read by Claude Code. It captures architecture decisions, known quirks, and pending work so you can pick up exactly where we left off.
@@ -9,7 +14,7 @@ This file is auto-read by Claude Code. It captures architecture decisions, known
 A single-file (`index.html`) interactive map prototype for **Heritage Points** — a community-rooted mapping tool for Kazimierz, Kraków. University project, BA-level team, presentable within a week to "newcomers" (first-time visitors to the neighbourhood).
 
 - **Live prototype folder:** `/Users/ekehbk/obsidian-llm-vault/outputs/heritage-points-prototype/`
-- **GitHub repo:** `https://github.com/habaqk/heritage-points-prototype`
+- **GitHub repo:** `https://github.com/habaqk/heritage-bandaid
 - **Vault MCD:** `/Users/ekehbk/obsidian-llm-vault/ideas/active/Heritage_Points/Heritage_Points.md`
 - **Dev server config:** `/Users/ekehbk/Documents/Sync Vault 1/.claude/launch.json` (uses `npx serve` on port 3000 — Python 3.9 from CommandLineTools has a PermissionError with `--directory`)
 
@@ -17,13 +22,13 @@ A single-file (`index.html`) interactive map prototype for **Heritage Points** �
 
 ## Stack
 
-| Concern | Solution |
-|---|---|
-| Map | Leaflet.js 1.9.4 (CDN), CartoDB Dark Matter tiles |
-| Data | Google Sheets (gviz API, `fetch()`) |
-| Photos | Picsum.photos placeholders — seeded by place ID |
+| Concern | Solution                                            |
+| ------- | --------------------------------------------------- |
+| Map     | Leaflet.js 1.9.4 (CDN), CartoDB Dark Matter tiles   |
+| Data    | Google Sheets (gviz API, `fetch()`)                 |
+| Photos  | Picsum.photos placeholders — seeded by place ID     |
 | Storage | `localStorage` for user-submitted pins and comments |
-| Build | None — single HTML file, no dependencies to install |
+| Build   | None — single HTML file, no dependencies to install |
 
 ---
 

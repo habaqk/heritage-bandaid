@@ -1,3 +1,8 @@
+---
+parent: "[[Heritage_Points]]"
+format: Prototype Brief
+generated: 2026-05-26
+---
 # Heritage Points — Prototype
 
 An interactive map prototype for **Heritage Points**, a community-rooted tool for capturing the places in Kazimierz, Kraków that traditional mapping platforms don't surface. Built as a university project.
@@ -8,11 +13,26 @@ An interactive map prototype for **Heritage Points**, a community-rooted tool fo
 
 ## What it does
 
-- Shows 23 community-nominated places in Kazimierz as gold pins on a dark map
+- Shows 23 community-nominated places in Kazimierz as coloured pins on a dark map
+- **Optics** — three lenses over the same data: *All places*, *Life & Culture*, *Going Out*. Non-matching pins recede; matching pins stay prominent
 - Tap any pin to open a detail sheet: photo strip, hook line, category, description, and comments
 - Toggle between **Community** (HP places) and **Standard** (what tourist apps show) to make the contrast visible
 - Anyone can add a new place using the **+** button
 - Comments are stored locally in the browser
+
+---
+
+## Optics
+
+Optics are the platform's navigational layer — interchangeable lenses over the same underlying place data. They don't change the Heritage Points themselves; they change what becomes visible and what recedes.
+
+| Optic | Categories | Colour |
+|---|---|---|
+| **All places** | Everything | Teal + Terracotta |
+| **Life & Culture** | Event spaces, galleries, informal spots, museums | Teal `#6bbf9e` |
+| **Going Out** | Bars, shops | Terracotta `#e87c50` |
+
+Select an optic using the pills at the bottom-left of the map. Adding new optics means adding a new entry to the `OPTICS` constant in `index.html` and grouping categories accordingly.
 
 ---
 
